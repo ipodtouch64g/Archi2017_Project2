@@ -1,0 +1,5 @@
+﻿  simulator.c
+c:\users\qazxws\desktop\archi2017_project2\simulator\simulator.c(54): warning C4018: '<': signed/unsigned 不相符
+c:\users\qazxws\desktop\archi2017_project2\simulator\simulator.c(72): warning C4018: '<': signed/unsigned 不相符
+  Archi2017_Project2.vcxproj -> C:\Users\qazxws\Desktop\Archi2017_Project2\simulator\Archi2017_Project2\Debug\Archi2017_Project2.exe
+  Archi2017_Project2.vcxproj -> C:\Users\qazxws\Desktop\Archi2017_Project2\simulator\Archi2017_Project2\Debug\Archi2017_Project2.pdb (Partial PDB)

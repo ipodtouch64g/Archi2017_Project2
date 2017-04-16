@@ -20,9 +20,9 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
-    <ProjectGuid>{39DC8953-162C-4CDA-B0AE-BE165E7C9D39}</ProjectGuid>
+    <ProjectGuid>{0CA2707E-0201-4631-A463-DCC11BA8D7B0}</ProjectGuid>
     <RootNamespace>Archi2017_Project2</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.14393.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.15063.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -111,15 +111,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="pipeline.cpp" />
-    <ClCompile Include="simulator.cpp" />
-    <ClCompile Include="main.cpp" />
-    <ClCompile Include="stages.cpp" />
+    <ClCompile Include="..\..\main.c" />
+    <ClCompile Include="..\..\simulator.c" />
+    <ClCompile Include="..\..\stages.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="pipeline.h" />
-    <ClInclude Include="simulator.h" />
-    <ClInclude Include="stages.h" />
+    <ClInclude Include="..\..\simulator.h" />
+    <ClInclude Include="..\..\stages.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

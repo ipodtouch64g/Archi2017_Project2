@@ -1,10 +1,11 @@
 #ifndef simulator_h
 #define simulator_h
-
+#pragma warning( disable : 4996 )
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+
 
 #define MEM_MAX_SIZE 1024
 #define R	  0
@@ -55,10 +56,10 @@ char* rInst[100];
 char *iimageBuf, *dimageBuf;
 FILE *iimage, *dimage, *error_dump, *snapshot;
 
-bool writeRegZero, numOverflow, HILOOverWrite, memOverflow, dataMisaligned;
-bool toggledHILO, toggledMULT;
-bool IF_HALT, ID_HALT, EX_HALT, DM_HALT, WB_HALT,ERROR_HALT;
-bool RS_TO_EX, RT_TO_EX, RS_TO_ID, RT_TO_ID;
+int writeRegZero, numOverflow, HILOOverWrite, memOverflow, dataMisaligned;
+int toggledHILO, toggledMULT;
+int IF_HALT, ID_HALT, EX_HALT, DM_HALT, WB_HALT,ERROR_HALT;
+int RS_TO_EX, RT_TO_EX, RS_TO_ID, RT_TO_ID;
 
 typedef struct _Buffer {
 	unsigned inst_in, inst_out;
@@ -76,7 +77,7 @@ typedef struct _Buffer {
 	unsigned num_rt_in, num_rt_out;
 	unsigned extended_imme_in, extended_imme_out;
 
-	bool pc_branch_in, pc_branch_out;
+	int pc_branch_in, pc_branch_out;
 
 	unsigned pc_in, pc_out;
 	unsigned reg_to_write_in, reg_to_write_out;
@@ -87,25 +88,24 @@ typedef struct _Buffer {
 
 }Buffer;
 
-extern bool STALL;
+int STALL;
 
-extern Buffer IF_ID;
-extern Buffer ID_EX;
-extern Buffer EX_DM;
-extern Buffer DM_WB;
-
-
-unsigned char iMemory[1024];
-unsigned iPos, address;
-unsigned op, rs, rt, rd, func, shamt, immediate;
-
-unsigned char dMemory[1024];
-unsigned dAddr, dPos;
-
-unsigned reg[32], PC, HI, LO;
+Buffer IF_ID;
+Buffer ID_EX;
+Buffer EX_DM;
+Buffer DM_WB;
 
 
-unsigned cycle;
+ unsigned char iMemory[1024];
+ unsigned iPos, address;
+ unsigned op, rs, rt, rd, func, shamt, immediate;
+
+ unsigned char dMemory[1024];
+ unsigned dAddr, dPos;
+
+ unsigned reg[32],lastreg[32], PC, HI,lastHI, LO,lastLO;
+
+ unsigned cycle;
 
 void OpenFile();
 void iimageParser();

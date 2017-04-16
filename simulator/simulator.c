@@ -1,11 +1,6 @@
 #include "simulator.h"
 
-Buffer IF_ID;
-Buffer ID_EX;
-Buffer EX_DM;
-Buffer DM_WB;
-Buffer WB_AFTER;
-bool STALL;
+
 
 // Open image files and output files
 void OpenFile()
@@ -13,10 +8,10 @@ void OpenFile()
 
 	unsigned len_iimage = 0, len_dimage = 0;
 
-	error_dump = fopen("error_dump.rpt", "w");
-	snapshot = fopen("snapshot.rpt", "w");
-	iimage = fopen("iimage.bin", "rb");
-	dimage = fopen("dimage.bin", "rb");
+	error_dump=fopen("error_dump.rpt", "w");
+	snapshot= fopen("snapshot.rpt", "w");
+	iimage=fopen("iimage.bin", "rb");
+	dimage=fopen("dimage.bin", "rb");
 
 
 	fseek(iimage, 0, SEEK_END);
@@ -131,19 +126,24 @@ void initialize() {
 	memset(&ID_EX, 0, sizeof(ID_EX));
 	memset(&EX_DM, 0, sizeof(EX_DM));
 	memset(&DM_WB, 0, sizeof(DM_WB));
-	IF_HALT = false;
-	ID_HALT = false;
-	EX_HALT = false;
-	DM_HALT = false;
-	WB_HALT = false;
-	ERROR_HALT = false;
-	writeRegZero = false;
-	numOverflow = false; 
-	HILOOverWrite = false; 
-	memOverflow = false; 
-	dataMisaligned = false;
-	toggledHILO = false; 
-	toggledMULT=false;
+	memset(&reg, 0, sizeof(reg));
+	memset(&lastreg, 0, sizeof(lastreg));
+	PC = 0; 
+	LO = 0; lastLO = 0;
+	HI = 0; lastHI = 0;
+	IF_HALT = 0;
+	ID_HALT = 0;
+	EX_HALT = 0;
+	DM_HALT = 0;
+	WB_HALT = 0;
+	ERROR_HALT = 0;
+	writeRegZero = 0;
+	numOverflow = 0; 
+	HILOOverWrite = 0; 
+	memOverflow = 0; 
+	dataMisaligned = 0;
+	toggledHILO = 0; 
+	toggledMULT=0;
 
 	instToString();
 }
@@ -151,10 +151,24 @@ void initialize() {
 void snapShot_Reg() {
 	fprintf(snapshot, "cycle %d\n", cycle++);
 	for (int i = 0; i<32; i++) {
-		fprintf(snapshot, "$%02d: 0x", i);
-		fprintf(snapshot, "%08X\n", reg[i]);
+		if (lastreg[i] != reg[i] || cycle==1)
+		{
+			fprintf(snapshot, "$%02d: 0x", i);
+			fprintf(snapshot, "%08X\n", reg[i]);
+		}
+		lastreg[i] = reg[i];
 	}
-
+	if (HI != lastHI || cycle == 1) {
+		fprintf(snapshot, "$HI: 0x");
+		fprintf(snapshot, "%08X\n", HI);
+	}
+		
+		if (LO != lastLO || cycle == 1) {
+			fprintf(snapshot, "$LO: 0x");
+			fprintf(snapshot, "%08X\n", LO);
+	}
+		
+	lastHI = HI; lastLO = LO;
 	if (ID_EX.pc_branch_out) {
 		fprintf(snapshot, "PC: 0x%08X\n", ID_EX.pc_out);
 		fprintf(snapshot, "IF: 0x");
@@ -173,7 +187,7 @@ void snapShot_Reg() {
 }
 //Snapshot of buffer(stages)
 void snapShot_Buffer() {
-	bool isNOP = false;
+	int isNOP = 0;
 	
 
 	if (STALL) {
