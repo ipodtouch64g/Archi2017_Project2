@@ -155,17 +155,41 @@ void NextStageTest() {
 		}
 		if (Global::MEM_WB.RegWrite && (Global::MEM_WB.WriteDes != 0) && ((Global::MEM_WB.WriteDes == ins.rt) || (Global::MEM_WB.WriteDes == ins.rs)))
 		{
-			
+
 			if (Global::MEM_WB.WriteDes == ins.rs)
 			{
-				Global::ID_EX.ins.fwdrs = true;
-				Global::ID_EX.ins.fwdrs_EX_DM_from = true;
+				if (ins.Name != "SLL" && ins.Name != "SRL" && ins.Name != "SRA" && ins.Name != "LUI")
+				{
+					if (!Global::ID_EX.ins.fwdrs)		//prevent double hazard
+					{
+						Global::ID_EX.ins.fwdrs = true;
+						Global::ID_EX.ins.fwdrs_EX_DM_from = true;
+					}
+				}
+
 
 			}
-			else
+			else if (Global::MEM_WB.WriteDes == ins.rt)
 			{
-				Global::ID_EX.ins.fwdrt = true;
-				Global::ID_EX.ins.fwdrt_EX_DM_from = true;
+				if (ins.type == 'I')
+				{
+					if (ins.Name == "SW" || ins.Name == "SB" || ins.Name == "SH")
+					{
+						if (!Global::ID_EX.ins.fwdrt)		//prevent double hazard
+						{
+							Global::ID_EX.ins.fwdrt = true;
+							Global::ID_EX.ins.fwdrt_EX_DM_from = true;
+						}
+					}
+				}
+				else
+				{
+					if (!Global::ID_EX.ins.fwdrt)		//prevent double hazard
+					{
+						Global::ID_EX.ins.fwdrt = true;
+						Global::ID_EX.ins.fwdrt_EX_DM_from = true;
+					}
+				}
 			}
 
 
