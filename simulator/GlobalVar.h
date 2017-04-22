@@ -4,7 +4,7 @@
 #include <map>
 #include <vector>
 #include <string>
-
+#include <iostream>
 using namespace std;
 
 class Instruction {
@@ -13,13 +13,13 @@ int Word, opcode, rs,rt, rd, shamt, funct;
 short C;
 char type;
 bool fwdrs, fwdrt;
-bool fwd_EX_DM_from;			//false = from EX/DM ; true = from DM/WB
+bool fwdrs_EX_DM_from, fwdrt_EX_DM_from;			//false = from EX/DM ; true = from DM/WB
 string Name;
 Instruction(){
 								Word = opcode = rs = rt = rd = shamt = funct = 0;
 								C = 0;
 								type = '\0';
-								fwd_EX_DM_from = fwdrs = fwdrt = false;
+								fwdrt_EX_DM_from=fwdrs_EX_DM_from = fwdrs = fwdrt = false;
 								Name = "NOP";
 }
 };
@@ -59,7 +59,8 @@ static bool Halt, Stall;
 static bool Branch_taken;
 static bool error_type[5];
 static bool toggle_MULT,toggle_HILO;
-static Buffer IF_ID, ID_EX, EX_MEM, MEM_WB;
+static Buffer IF_ID, ID_EX, EX_MEM, MEM_WB,WB_AFTER;
 static bool Flush;
+static void debug();
 };
 #endif
