@@ -1,4 +1,4 @@
-CC = g++ -std=c++11
+CC = g++ -std=c++11 -O2
 SRCS = ./*.cpp
 OBS = ./*.o
 
