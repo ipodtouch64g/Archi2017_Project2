@@ -1,17 +1,18 @@
 #include <iostream>
 #include <bitset>
-#include "GlobalVar.h"
+#include "Simulator.h"
 #include "Stage.h"
 
 using namespace std;
 
-void NumberOverflowDetect(int temp, int A, int B) {
-	bitset<32> bs1 = temp, bs2 = A, bs3 = B;
+inline void NumberOverflowDetect(int result, int A, int B) {
+	bitset<32> bs1 = result, bs2 = A, bs3 = B;
 	if (bs2[31] == bs3[31] && bs2[31] != bs1[31])
 		Global::error_type[3] = true;
 }
-void HILOWriteDetect(string op) {
-	if (op == "mult"|| op=="multu")
+
+inline void HILOWriteDetect(string op) {
+	if (op == "mult" || op == "multu")
 	{
 		if (Global::toggle_MULT == 1 && Global::toggle_HILO == 1) //NO HILO error , turn off HILO toggle now
 		{
@@ -33,45 +34,44 @@ void HILOWriteDetect(string op) {
 	}
 }
 
-void AddressOverflowDetect(int K, int bytes) {
-	if (K < 0 || K >= 1024 || K + bytes >= 1024 || K + bytes < 0)
+inline void AddressOverflowDetect(int a, int bytes) {
+	if (a < 0 || a >= 1024 || a + bytes >= 1024 || a + bytes < 0)
 		Global::error_type[1] = true;
 }
 
-void DataMisaligned(int K, int bytes) {
-	if (K % bytes != 0)
+inline void DataMisaligned(int a, int bytes) {
+	if (a % bytes != 0)
 		Global::error_type[2] = true;
 }
 
-bool isBranch(Instruction ins) {
+inline bool isBranch(Instruction ins) {
 	return ((ins.Name == "BEQ") || (ins.Name == "BNE") || (ins.Name == "BGTZ") || (ins.Name == "J") || (ins.Name == "JAL") || (ins.Name == "JR"));
 }
 
-bool Excep(string s) {
+inline bool notS(string s) {
 	return (s == "NOP") || (s == "SW") || (s == "SB") || (s == "SH");
 }
-bool isHILO(Instruction ins) {
+inline bool isHILO(Instruction ins) {
 	return ((ins.Name == "MULT") || (ins.Name == "MULTU") || (ins.Name == "MFHI") || (ins.Name == "MFLO"));
 }
 
-Instruction Decode(int Word) {
+void IF() {
 	Instruction ins;
-	ins.Word = Word;
+	ins.line = Global::Address[Global::PC];
 	// Calculate opcode
-	ins.opcode = ((unsigned int)ins.Word) >> 26;
+	ins.opcode = ((unsigned int)ins.line) >> 26;
 	// Calculate rs
-	ins.rs = ((unsigned int)(ins.Word << 6)) >> 27;
+	ins.rs = ((unsigned int)(ins.line << 6)) >> 27;
 	// Calculate rt
-	ins.rt = ((unsigned int)(ins.Word << 11)) >> 27;
+	ins.rt = ((unsigned int)(ins.line << 11)) >> 27;
 	// Calculate rd
-	ins.rd = ((unsigned int)(ins.Word << 16)) >> 27;
+	ins.rd = ((unsigned int)(ins.line << 16)) >> 27;
 	// Calculate shamt
-	ins.shamt = ((unsigned int)(ins.Word << 21)) >> 27;
+	ins.shamt = ((unsigned int)(ins.line << 21)) >> 27;
 	// Calculate funct
-	ins.funct = ((unsigned int)(ins.Word << 26)) >> 26;
-	// Calculate C
-	ins.C = (ins.Word << 16) >> 16;
-
+	ins.funct = ((unsigned int)(ins.line << 26)) >> 26;
+	// Calculate imme
+	ins.imme = (ins.line << 16) >> 16;
 	switch (ins.opcode) {
 	case 0:
 		ins.type = 'R';
@@ -212,19 +212,14 @@ Instruction Decode(int Word) {
 	if (ins.Name == "SLL")
 		if (ins.rt == 0 && ins.rd == 0 && ins.shamt == 0)
 			ins.Name = "NOP";
-	return ins;
-}
-
-void Instruction_Fetch() {
-	Instruction ins;
-	ins.Word = Global::Address[Global::PC];
-	ins = Decode(ins.Word);
 	if (!Global::Stall) Global::IF_ID.ins = ins;
 }
 
-void Instruction_Decode() {
+void ID() {
 	Instruction ins = Global::IF_ID.ins;
-	int K = 0, DataRs, DataRt;
+	int jumpTaregt = 0, DataRs, DataRt;
+	Global::ID_EX.RegWrite = false;
+	Global::ID_EX.MemRead = false;
 
 	if (Global::Stall) {
 		Instruction NOP;
@@ -243,9 +238,7 @@ void Instruction_Decode() {
 	else
 		DataRt = Global::reg[ins.rt];
 
-	Global::ID_EX.RegWrite = false;
-	Global::ID_EX.MemRead = false;
-
+	//Do ID things
 	switch (ins.opcode) {
 	case 0:
 		switch (ins.funct) {
@@ -301,23 +294,20 @@ void Instruction_Decode() {
 			Global::Branch_taken = true;
 			Global::Branch_PC = DataRs;
 			break;
-		case 24:        // mult
+		case 24: // mult
 			Global::ID_EX.RegWrite = false;
-
 			break;
-		case 25:        // multu
+		case 25: // multu
 			Global::ID_EX.RegWrite = false;
-
 			break;
-		case 16:        // mfhi
+		case 16: // mfhi
 			Global::ID_EX.RegWrite = true;
 			Global::ID_EX.WriteDes = ins.rd;
 			break;
-		case 18:        // mflo
+		case 18: // mflo
 			Global::ID_EX.RegWrite = true;
 			Global::ID_EX.WriteDes = ins.rd;
 			break;
-
 		}
 		break;
 	case 8: // addi
@@ -379,37 +369,37 @@ void Instruction_Decode() {
 	case 4: // beq
 		Global::Branch_taken = (DataRs == DataRt);
 		NumberOverflowDetect(Global::PC + 4, Global::PC, 4);
-		NumberOverflowDetect(Global::PC + 4 + 4 * (int)ins.C, Global::PC + 4, 4 * (int)ins.C);
-		Global::Branch_PC = Global::PC + 4 * (int)ins.C;
+		NumberOverflowDetect(Global::PC + 4 + 4 * (int)ins.imme, Global::PC + 4, 4 * (int)ins.imme);
+		Global::Branch_PC = Global::PC + 4 * (int)ins.imme;
 		break;
 	case 5: // bne
 		Global::Branch_taken = (DataRs != DataRt);
 		NumberOverflowDetect(Global::PC + 4, Global::PC, 4);
-		NumberOverflowDetect(Global::PC + 4 + 4 * (int)ins.C, Global::PC + 4, 4 * (int)ins.C);
-		Global::Branch_PC = Global::PC + 4 * (int)ins.C;
+		NumberOverflowDetect(Global::PC + 4 + 4 * (int)ins.imme, Global::PC + 4, 4 * (int)ins.imme);
+		Global::Branch_PC = Global::PC + 4 * (int)ins.imme;
 		break;
 	case 7: // bgtz
 		Global::Branch_taken = (DataRs > 0);
 		NumberOverflowDetect(Global::PC + 4, Global::PC, 4);
-		NumberOverflowDetect(Global::PC + 4 + 4 * (int)ins.C, Global::PC + 4, 4 * (int)ins.C);
-		Global::Branch_PC = Global::PC + 4 * (int)ins.C;
+		NumberOverflowDetect(Global::PC + 4 + 4 * (int)ins.imme, Global::PC + 4, 4 * (int)ins.imme);
+		Global::Branch_PC = Global::PC + 4 * (int)ins.imme;
 		break;
 	case 2: // j
-		ins.C = (unsigned)(ins.Word << 6) >> 6;
-		K = ((Global::PC + 4) >> 28) << 28;
-		K += (ins.C << 2);
+		ins.imme = (unsigned)(ins.line << 6) >> 6;
+		jumpTaregt = ((Global::PC + 4) >> 28) << 28;
+		jumpTaregt += (ins.imme << 2);
 		Global::Branch_taken = true;
-		Global::Branch_PC = K;
+		Global::Branch_PC = jumpTaregt;
 		break;
 	case 3: // jal
 		Global::ID_EX.WriteDes = 31;
 		Global::ID_EX.ALU_result = Global::PC;
-		ins.C = (unsigned)(ins.Word << 6) >> 6;
-		K = ((Global::PC + 4) >> 28) << 28;
-		K += (ins.C << 2);
+		ins.imme = (unsigned)(ins.line << 6) >> 6;
+		jumpTaregt = ((Global::PC + 4) >> 28) << 28;
+		jumpTaregt += (ins.imme << 2);
 		Global::ID_EX.RegWrite = true;
 		Global::Branch_taken = true;
-		Global::Branch_PC = K;
+		Global::Branch_PC = jumpTaregt;
 		break;
 	}
 	if (!Global::Stall) Global::ID_EX.ins = ins;
@@ -417,28 +407,24 @@ void Instruction_Decode() {
 	Global::ID_EX.RegRt = DataRt;
 }
 
-void Execute() {
+void EXE() {
 	Instruction ins = Global::ID_EX.ins;
 	int ALU_result = 0, DataRs = 0, DataRt = 0;
-	unsigned int A;
-
 	// Forwarding
 	if (!isBranch(ins)) {
 		if (ins.fwdrs)
 		{
-			
-				DataRs = Global::MEM_WB.Data;
-				if (ins.fwdrs_EX_DM_from)
-					DataRs = Global::WB_AFTER.ALU_result;
+			DataRs = Global::MEM_WB.Data;
+			if (ins.fwdrs_EX_DM_from)
+				DataRs = Global::WB_AFTER.ALU_result;
 		}
 		else
 			DataRs = Global::ID_EX.RegRs;
 		if (ins.fwdrt)
 		{
-			
-				DataRt = Global::MEM_WB.Data;
-				if (ins.fwdrt_EX_DM_from)
-					DataRt = Global::WB_AFTER.ALU_result;
+			DataRt = Global::MEM_WB.Data;
+			if (ins.fwdrt_EX_DM_from)
+				DataRt = Global::WB_AFTER.ALU_result;
 		}
 		else
 			DataRt = Global::ID_EX.RegRt;
@@ -448,6 +434,7 @@ void Execute() {
 	ins.fwdrt = false;
 	ins.fwdrt_EX_DM_from = false;
 	ins.fwdrs_EX_DM_from = false;
+	unsigned int A;
 	unsigned long long x = 0;
 	unsigned long long rs_64, rt_64;
 	switch (ins.opcode) {
@@ -518,61 +505,61 @@ void Execute() {
 		}
 		break;
 	case 8: // addi
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 9: // addiu
-		ALU_result = DataRs + (int)ins.C;
+		ALU_result = DataRs + (int)ins.imme;
 		break;
 	case 35: // lw
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 33: // lh
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 37: // lhu
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 32: // lb
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 36: // lbu
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 43: // sw
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 41: // sh
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 40: // sb
-		ALU_result = DataRs + (int)ins.C;
-		NumberOverflowDetect(ALU_result, DataRs, (int)ins.C);
+		ALU_result = DataRs + (int)ins.imme;
+		NumberOverflowDetect(ALU_result, DataRs, (int)ins.imme);
 		break;
 	case 15: // lui
-		ALU_result = (int)ins.C << 16;
+		ALU_result = (int)ins.imme << 16;
 		break;
 	case 12: // andi
-		A = (((unsigned int)ins.C << 16) >> 16);
+		A = (((unsigned int)ins.imme << 16) >> 16);
 		ALU_result = DataRs & A;
 		break;
 	case 13: // ori
-		A = (((unsigned int)ins.C << 16) >> 16);
+		A = (((unsigned int)ins.imme << 16) >> 16);
 		ALU_result = DataRs | A;
 		break;
 	case 14: // nori
-		A = (((unsigned int)ins.C << 16) >> 16);
+		A = (((unsigned int)ins.imme << 16) >> 16);
 		ALU_result = ~(DataRs | A);
 		break;
 	case 10: // slti
-		ALU_result = (DataRs < ins.C);
+		ALU_result = (DataRs < ins.imme);
 		break;
 	case 3: //jal
 		ALU_result = Global::ID_EX.ALU_result;
@@ -581,6 +568,7 @@ void Execute() {
 		Global::Halt = true;
 		break;
 	}
+	//Passing results
 	Global::EX_MEM.ALU_result = ALU_result;
 	Global::EX_MEM.ins = ins;
 	Global::EX_MEM.RegRt = DataRt;
@@ -589,9 +577,10 @@ void Execute() {
 	Global::EX_MEM.WriteDes = Global::ID_EX.WriteDes;
 }
 
-void Memory_Access() {
+void DM() {
 	Instruction ins = Global::EX_MEM.ins;
 	int Data = 0;
+
 	switch (ins.opcode) {
 	case 35: // lw
 		AddressOverflowDetect(Global::EX_MEM.ALU_result, 3);
@@ -658,11 +647,11 @@ void Memory_Access() {
 	//Global::debug();
 }
 
-void Write_Back() {
+void WB() {
 	Instruction ins = Global::MEM_WB.ins;
 	if (Global::MEM_WB.RegWrite) {
-		if ((Global::MEM_WB.WriteDes == 0) && !Excep(ins.Name) && !isBranch(ins)) {
-			Global::error_type[0] = true;
+		if ((Global::MEM_WB.WriteDes == 0) && !isBranch(ins) && !notS(ins.Name)) {
+			Global::error_type[0] = true;		//Write 0
 			return;
 		}
 		if (ins.type == 'R' || ins.type == 'J')
@@ -675,8 +664,5 @@ void Write_Back() {
 			Global::reg[Global::MEM_WB.WriteDes] = Global::MEM_WB.Data;
 			Global::WB_AFTER.ALU_result = Global::MEM_WB.Data;
 		}
-			
-		 
 	}
-
 }
