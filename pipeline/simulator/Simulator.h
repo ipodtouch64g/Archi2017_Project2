@@ -9,8 +9,8 @@ using namespace std;
 
 class File{
 public:
-	static ofstream File::snapshot;
-	static ofstream File::error_dump;
+	static ofstream snapshot;
+	static ofstream error_dump;
 	static ifstream image;
 };
 
