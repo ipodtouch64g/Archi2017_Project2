@@ -7,6 +7,9 @@
 #include <fstream>
 using namespace std;
 
+
+
+
 class File{
 public:
 	static ofstream snapshot;
@@ -43,15 +46,6 @@ public:
 		RegRs = RegRt = Data = ALU_result = WriteDes = 0;
 		RegWrite = MemRead = false;
 	}
-	void Clear() {
-		ALU_result = 0;
-		Data = 0;
-		RegRs = 0;
-		RegRt = 0;
-		WriteDes = 0;
-		RegWrite = false;
-		MemRead = false;
-	}
 };
 
 class lastThings {
@@ -60,7 +54,7 @@ public:
 };
 
 
-class Global {
+class Simulator {
 public:
 	static int Address[1024];
 	static int Memory[1024];
@@ -71,5 +65,12 @@ public:
 	static bool Flush;
 	static int reg[32], PC, Branch_PC, LO, HI;
 	static bool toggle_MULT, toggle_HILO;
+	static bool isJ(string);
+	static bool isLoad(string);
+	static bool isBranch(Instruction);
+	static bool notS(string);
+	static bool isHILO(Instruction);
 };
+
+
 #endif

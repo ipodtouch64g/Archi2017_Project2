@@ -1,19 +1,37 @@
 #include "Simulator.h"
 
 int lastThings::reg[32],lastThings::LO,lastThings::HI;
-int Global::Address[1024];
-int Global::Memory[1024];
-int Global::reg[32], Global::PC, Global::Branch_PC,Global::LO,Global::HI;
-bool Global::Halt, Global::Stall, Global::Flush,Global::toggle_HILO,Global::toggle_MULT;
-bool Global::Branch_taken;
-bool Global::error_toggle[5];
-Buffer Global::IF_ID, Global::ID_EX, Global::EX_MEM, Global::MEM_WB ,Global::WB_AFTER;
+int Simulator::Address[1024];
+int Simulator::Memory[1024];
+int Simulator::reg[32], Simulator::PC, Simulator::Branch_PC,Simulator::LO,Simulator::HI;
+bool Simulator::Halt, Simulator::Stall, Simulator::Flush,Simulator::toggle_HILO,Simulator::toggle_MULT;
+bool Simulator::Branch_taken;
+bool Simulator::error_toggle[5];
+Buffer Simulator::IF_ID, Simulator::ID_EX, Simulator::EX_MEM, Simulator::MEM_WB ,Simulator::WB_AFTER;
 ofstream File::snapshot;
 ofstream File::error_dump;
 ifstream File::image;
-void Global::debug()
+void Simulator::debug()
 {
 	std::cout << "IF_ID.ALU.result : " << IF_ID.ALU_result << endl;
 	std::cout << "ID_EX.ALU.result : " << ID_EX.ALU_result << endl;
 	std::cout << "EX_MEM.ALU.result : " << EX_MEM.ALU_result << endl;
+}
+bool Simulator::isJ(string s) {
+	return (s == "JR" || s == "BGTZ" || s == "J" || s == "JAL");
+}
+
+bool Simulator::isLoad(string s) {
+	return (s == "LW" || s == "LH" || s == "LHU" || s == "LB" || s == "LBU");
+}
+
+bool Simulator::isBranch(Instruction inst) {
+	return ((inst.name == "BEQ") || (inst.name == "BNE") || (inst.name == "BGTZ") || (inst.name == "J") || (inst.name == "JAL") || (inst.name == "JR"));
+}
+
+bool Simulator::notS(string s) {
+	return (s == "NOP") || (s == "SW") || (s == "SB") || (s == "SH");
+}
+bool Simulator::isHILO(Instruction inst) {
+	return ((inst.name == "MULT") || (inst.name == "MULTU") || (inst.name == "MFHI") || (inst.name == "MFLO"));
 }

@@ -5,7 +5,7 @@
 using namespace std;
 inline void decodeLine(Instruction &inst)
 {
-	inst.line = Global::Address[Global::PC];
+	inst.line = Simulator::Address[Simulator::PC];
 	inst.opcode = ((unsigned int)inst.line) >> 26;
 	inst.rs = ((unsigned int)(inst.line << 6)) >> 27;
 	inst.rt = ((unsigned int)(inst.line << 11)) >> 27;
@@ -17,52 +17,243 @@ inline void decodeLine(Instruction &inst)
 inline void NumberOverflowDetect(int result, int A, int B) {
 
 	if ((A > 0 && B > 0 && result <= 0) || (A < 0 && B < 0 && result >= 0))
-		Global::error_toggle[3] = true;
+		Simulator::error_toggle[3] = true;
 }
 
 inline void HILOWriteDetect(string op) {
 	if (op == "mult" || op == "multu")
 	{
-		if (Global::toggle_MULT == 1 && Global::toggle_HILO == 1) //NO HILO error , turn off HILO toggle now
+		if (Simulator::toggle_MULT == 1 && Simulator::toggle_HILO == 1) //NO HILO error , turn off HILO toggle now
 		{
-			Global::toggle_HILO = 0;
+			Simulator::toggle_HILO = 0;
 		}
-		else if (Global::toggle_MULT == 1 && Global::toggle_HILO == 0) //HILO error!!
+		else if (Simulator::toggle_MULT == 1 && Simulator::toggle_HILO == 0) //HILO error!!
 		{
-			Global::error_toggle[4] = 1;
+			Simulator::error_toggle[4] = 1;
 		}
 		//NEED TO DETECT HILO ON AND TURN IT OFF BEFORE FIRST MULT
 
 		else {
-			Global::toggle_MULT = 1; Global::toggle_HILO = 0;
+			Simulator::toggle_MULT = 1; Simulator::toggle_HILO = 0;
 		}
 	}
 	else //op == hi lo
 	{
-		Global::toggle_HILO = 1;
+		Simulator::toggle_HILO = 1;
 	}
 }
 
 inline void MemOverflowDetect(int a, int len_byte) {
 	if (a < 0 || a >= 1024 || a + len_byte < 0 || a + len_byte >= 1024)
-		Global::error_toggle[1] = true;
+		Simulator::error_toggle[1] = true;
 }
 
 inline void DataMisalignedDetect(int a, int len_byte) {
 	if (a % len_byte != 0)
-		Global::error_toggle[2] = true;
+		Simulator::error_toggle[2] = true;
 }
 
-inline bool isBranch(Instruction inst) {
-	return ((inst.name == "BEQ") || (inst.name == "BNE") || (inst.name == "BGTZ") || (inst.name == "J") || (inst.name == "JAL") || (inst.name == "JR"));
+inline void checkfwdinID(Instruction &inst)
+{
+	int RsData, RtData;
+	if (Simulator::isBranch(inst)) {
+		bool Branching = false;
+		// Forward rs
+		if (!Simulator::EX_MEM.MemRead && Simulator::EX_MEM.RegWrite && (Simulator::EX_MEM.WriteDes != 0) && (Simulator::EX_MEM.WriteDes == inst.rs)) {
+			RsData = Simulator::EX_MEM.ALU_result;
+			Simulator::IF_ID.inst.fwdrs = true;
+		}
+		else {
+			Simulator::IF_ID.inst.fwdrs = false;
+			if (Simulator::MEM_WB.RegWrite && (Simulator::MEM_WB.inst.name != "NOP") && (Simulator::MEM_WB.WriteDes == inst.rs) && Simulator::MEM_WB.WriteDes != 0) {
+				if (Simulator::MEM_WB.inst.type == 'R')
+					RsData = Simulator::MEM_WB.ALU_result;
+				else if (Simulator::MEM_WB.inst.type == 'I')
+					RsData = Simulator::MEM_WB.Data;
+			}
+			else
+				RsData = Simulator::reg[inst.rs];
+		}
+		// Forward rt
+		if (!Simulator::EX_MEM.MemRead && Simulator::EX_MEM.RegWrite && (Simulator::EX_MEM.WriteDes != 0) && (Simulator::EX_MEM.WriteDes == inst.rt)) {
+			if (!Simulator::isJ(inst.name)) {
+				Simulator::IF_ID.inst.fwdrt = true;
+				RtData = Simulator::EX_MEM.ALU_result;
+			}
+		}
+		else {
+			Simulator::IF_ID.inst.fwdrt = false;
+			if (Simulator::MEM_WB.RegWrite && Simulator::MEM_WB.WriteDes == inst.rt && Simulator::MEM_WB.WriteDes != 0) {
+				if (Simulator::MEM_WB.inst.type == 'R')
+					RtData = Simulator::MEM_WB.ALU_result;
+				else if (Simulator::MEM_WB.inst.type == 'I')
+					RtData = Simulator::MEM_WB.Data;
+			}
+			else
+				RtData = Simulator::reg[inst.rt];
+		}
+		switch (inst.opcode) {
+		case 4: // beq
+			Branching = (RsData == RtData);
+			break;
+		case 5: // bne
+			Branching = (RsData != RtData);
+			break;
+		case 7: // bgtz
+			Branching = (RsData > 0);
+			break;
+		case 2: // j
+			Branching = true;
+			break;
+		case 3: // jal
+			Branching = true;
+			break;
+		case 0: // jg
+			Branching = true;
+		}
+		Simulator::Flush = (Branching) ? true : false;
+	}
+	else {
+		Simulator::IF_ID.inst.fwdrs = false;
+		Simulator::IF_ID.inst.fwdrt = false;
+	}
 }
 
-inline bool notS(string s) {
-	return (s == "NOP") || (s == "SW") || (s == "SB") || (s == "SH");
+inline void checkfwdinEX(Instruction &inst)
+{
+	if (!Simulator::isBranch(inst)) {
+		/*
+		Check for fwdrs
+		*/
+		if (!Simulator::EX_MEM.MemRead && Simulator::EX_MEM.RegWrite && (Simulator::EX_MEM.WriteDes != 0) && (Simulator::EX_MEM.WriteDes == inst.rs)) {
+			if (inst.name != "SLL" && inst.name != "SRL" && inst.name != "SRA" && inst.name != "LUI")
+			{
+				Simulator::ID_EX.inst.fwdrs = true;
+				Simulator::ID_EX.inst.fwdrs_EX_DM_from = false;
+			}
+
+		}
+
+		else {
+			Simulator::ID_EX.inst.fwdrs = false;
+			Simulator::ID_EX.inst.fwdrs_EX_DM_from = false;
+		}
+
+		/*
+		Check for fwdrt
+		*/
+		if (!Simulator::EX_MEM.MemRead && Simulator::EX_MEM.RegWrite && (Simulator::EX_MEM.WriteDes != 0))
+		{
+			if (inst.type == 'I')
+			{
+				if (inst.name == "SW" || inst.name == "SB" || inst.name == "SH")
+				{
+					if (Simulator::EX_MEM.WriteDes == inst.rt)
+					{
+						Simulator::ID_EX.inst.fwdrt = true;
+						Simulator::ID_EX.inst.fwdrt_EX_DM_from = false;
+					}
+				}
+			}
+			else
+			{
+				if (Simulator::EX_MEM.WriteDes == inst.rt)
+				{
+					Simulator::ID_EX.inst.fwdrt = true;
+					Simulator::ID_EX.inst.fwdrt_EX_DM_from = false;
+				}
+			}
+		}
+		if (Simulator::MEM_WB.RegWrite && (Simulator::MEM_WB.WriteDes != 0) && ((Simulator::MEM_WB.WriteDes == inst.rt) || (Simulator::MEM_WB.WriteDes == inst.rs)))
+		{
+			if (Simulator::MEM_WB.WriteDes == inst.rs)
+			{
+				if (inst.name != "SLL" && inst.name != "SRL" && inst.name != "SRA" && inst.name != "LUI")
+				{
+					if (!Simulator::ID_EX.inst.fwdrs)		//prevent double hazard
+					{
+						Simulator::ID_EX.inst.fwdrs = true;
+						Simulator::ID_EX.inst.fwdrs_EX_DM_from = true;
+					}
+				}
+			}
+			if (Simulator::MEM_WB.WriteDes == inst.rt)
+			{
+				if (inst.type == 'I')
+				{
+					if (inst.name == "SW" || inst.name == "SB" || inst.name == "SH")
+					{
+						if (!Simulator::ID_EX.inst.fwdrt)		//prevent double hazard
+						{
+							Simulator::ID_EX.inst.fwdrt = true;
+							Simulator::ID_EX.inst.fwdrt_EX_DM_from = true;
+						}
+					}
+				}
+				else
+				{
+					if (!Simulator::ID_EX.inst.fwdrt)		//prevent double hazard
+					{
+						Simulator::ID_EX.inst.fwdrt = true;
+						Simulator::ID_EX.inst.fwdrt_EX_DM_from = true;
+					}
+				}
+			}
+		}
+	}
+	else {
+		Simulator::ID_EX.inst.fwdrs = false;
+		Simulator::ID_EX.inst.fwdrt = false;
+		Simulator::ID_EX.inst.fwdrs_EX_DM_from = false;
+		Simulator::ID_EX.inst.fwdrt_EX_DM_from = false;
+	}
 }
-inline bool isHILO(Instruction inst) {
-	return ((inst.name == "MULT") || (inst.name == "MULTU") || (inst.name == "MFHI") || (inst.name == "MFLO"));
+inline void checkstall(Instruction &inst)
+{
+	if (!Simulator::isBranch(inst)) {
+		if (Simulator::ID_EX.MemRead && Simulator::ID_EX.WriteDes != 0 && ((Simulator::ID_EX.WriteDes == inst.rs) || (Simulator::ID_EX.WriteDes == inst.rt))) {
+			if (Simulator::ID_EX.WriteDes == inst.rs) {
+				{
+					Simulator::Stall = true;
+				}
+			}
+			else if (Simulator::ID_EX.WriteDes == inst.rt) {
+				if (inst.type == 'I') {
+					if (inst.name == "SW" || inst.name == "SH" || inst.name == "SB")
+					{
+						Simulator::Stall = true;
+					}
+				}
+				else if (inst.type != 'I')
+				{
+					Simulator::Stall = true;
+				}
+			}
+		}
+	}
+	else {
+		if (Simulator::ID_EX.RegWrite && (Simulator::ID_EX.WriteDes != 0) && ((Simulator::ID_EX.WriteDes == inst.rs) || (Simulator::ID_EX.WriteDes == inst.rt))) {
+			if (Simulator::ID_EX.WriteDes == inst.rs) {
+				if (inst.name != "J" && inst.name != "JAL")
+				{
+					Simulator::Stall = true;
+				}
+			}
+			if (Simulator::ID_EX.WriteDes == inst.rt) {
+				if (!Simulator::isJ(inst.name))
+				{
+					Simulator::Stall = true;
+				}
+			}
+		}
+		else if (Simulator::EX_MEM.MemRead && (Simulator::EX_MEM.WriteDes != 0) && ((Simulator::EX_MEM.WriteDes == inst.rs) || (Simulator::EX_MEM.WriteDes == inst.rt)))
+		{
+			Simulator::Stall = true;
+		}
+	}
 }
+
+
 
 void IF() {
 	Instruction inst;
@@ -207,222 +398,229 @@ void IF() {
 	if (inst.name == "SLL")
 		if (inst.rt == 0 && inst.rd == 0 && inst.shamt == 0)
 			inst.name = "NOP";
-	if (!Global::Stall) Global::IF_ID.inst = inst;
+	if (!Simulator::Stall) Simulator::IF_ID.inst = inst;
 }
 
 void ID() {
-	Instruction inst = Global::IF_ID.inst;
-	int jumpTaregt = 0, DataRs, DataRt;
-	Global::ID_EX.RegWrite = false;
-	Global::ID_EX.MemRead = false;
+	Instruction inst = Simulator::IF_ID.inst;
+	int jumpTarget = 0, DataRs, DataRt;
+	Simulator::ID_EX.RegWrite = false;
+	Simulator::ID_EX.MemRead = false;
 
-	if (Global::Stall) {
+	if (Simulator::Stall) {
 		Instruction NOP;
-		Global::ID_EX.inst = NOP;
-		Global::ID_EX.Clear();
+		Simulator::ID_EX.inst = NOP;
+		Simulator::ID_EX.ALU_result = 0;
+		Simulator::ID_EX.Data = 0;
+		Simulator::ID_EX.RegRs = 0;
+		Simulator::ID_EX.RegRt = 0;
+		Simulator::ID_EX.WriteDes = 0;
+		Simulator::ID_EX.RegWrite = false;
+		Simulator::ID_EX.MemRead = false;
 		return;
 	}
 
 	// Forwarding
 	if (inst.fwdrs)
-		DataRs = Global::MEM_WB.ALU_result;
+		DataRs = Simulator::MEM_WB.ALU_result;
 	else
-		DataRs = Global::reg[inst.rs];
+		DataRs = Simulator::reg[inst.rs];
 	if (inst.fwdrt)
-		DataRt = Global::MEM_WB.ALU_result;
+		DataRt = Simulator::MEM_WB.ALU_result;
 	else
-		DataRt = Global::reg[inst.rt];
+		DataRt = Simulator::reg[inst.rt];
 
 	//Do ID things
 	switch (inst.opcode) {
 	case 0:
 		switch (inst.funct) {
 		case 32: // add
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 33: // addu
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 34: // sub
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 36: // and
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 37: // or
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 38: // xor
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 39: // nor
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 40: // nand
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 42: // slt
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 0: // sll
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 2: // srl
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 3: // sra
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 8: // jr
-			Global::Branch_taken = true;
-			Global::Branch_PC = DataRs;
+			Simulator::Branch_taken = true;
+			Simulator::Branch_PC = DataRs;
 			break;
 		case 24: // mult
-			Global::ID_EX.RegWrite = false;
+			Simulator::ID_EX.RegWrite = false;
 			break;
 		case 25: // multu
-			Global::ID_EX.RegWrite = false;
+			Simulator::ID_EX.RegWrite = false;
 			break;
 		case 16: // mfhi
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		case 18: // mflo
-			Global::ID_EX.RegWrite = true;
-			Global::ID_EX.WriteDes = inst.rd;
+			Simulator::ID_EX.RegWrite = true;
+			Simulator::ID_EX.WriteDes = inst.rd;
 			break;
 		}
 		break;
 	case 8: // addi
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 9: // addiu
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 35: // lw
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.MemRead = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.MemRead = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 33: // lh
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.MemRead = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.MemRead = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 37: // lhu
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.MemRead = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.MemRead = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 32: // lb
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.MemRead = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.MemRead = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 36: // lbu
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.MemRead = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.MemRead = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 15: // lui
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 12: // andi
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 13: // ori
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 14: // nori
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 10: // slti
-		Global::ID_EX.RegWrite = true;
-		Global::ID_EX.WriteDes = inst.rt;
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::ID_EX.WriteDes = inst.rt;
 		break;
 	case 63: // Halt
-		Global::Halt = true;
+		Simulator::Halt = true;
 		break;
 	case 4: // beq
-		Global::Branch_taken = (DataRs == DataRt);
-		NumberOverflowDetect(Global::PC + 4, Global::PC, 4);
-		NumberOverflowDetect(Global::PC + 4 + 4 * (int)inst.imme, Global::PC + 4, 4 * (int)inst.imme);
-		Global::Branch_PC = Global::PC + 4 * (int)inst.imme;
+		Simulator::Branch_taken = (DataRs == DataRt);
+		NumberOverflowDetect(Simulator::PC + 4, Simulator::PC, 4);
+		NumberOverflowDetect(Simulator::PC + 4 + 4 * (int)inst.imme, Simulator::PC + 4, 4 * (int)inst.imme);
+		Simulator::Branch_PC = Simulator::PC + 4 * (int)inst.imme;
 		break;
 	case 5: // bne
-		Global::Branch_taken = (DataRs != DataRt);
-		NumberOverflowDetect(Global::PC + 4, Global::PC, 4);
-		NumberOverflowDetect(Global::PC + 4 + 4 * (int)inst.imme, Global::PC + 4, 4 * (int)inst.imme);
-		Global::Branch_PC = Global::PC + 4 * (int)inst.imme;
+		Simulator::Branch_taken = (DataRs != DataRt);
+		NumberOverflowDetect(Simulator::PC + 4, Simulator::PC, 4);
+		NumberOverflowDetect(Simulator::PC + 4 + 4 * (int)inst.imme, Simulator::PC + 4, 4 * (int)inst.imme);
+		Simulator::Branch_PC = Simulator::PC + 4 * (int)inst.imme;
 		break;
 	case 7: // bgtz
-		Global::Branch_taken = (DataRs > 0);
-		NumberOverflowDetect(Global::PC + 4, Global::PC, 4);
-		NumberOverflowDetect(Global::PC + 4 + 4 * (int)inst.imme, Global::PC + 4, 4 * (int)inst.imme);
-		Global::Branch_PC = Global::PC + 4 * (int)inst.imme;
+		Simulator::Branch_taken = (DataRs > 0);
+		NumberOverflowDetect(Simulator::PC + 4, Simulator::PC, 4);
+		NumberOverflowDetect(Simulator::PC + 4 + 4 * (int)inst.imme, Simulator::PC + 4, 4 * (int)inst.imme);
+		Simulator::Branch_PC = Simulator::PC + 4 * (int)inst.imme;
 		break;
 	case 2: // j
 		inst.imme = (unsigned)(inst.line << 6) >> 6;
-		jumpTaregt = ((Global::PC + 4) >> 28) << 28;
-		jumpTaregt += (inst.imme << 2);
-		Global::Branch_taken = true;
-		Global::Branch_PC = jumpTaregt;
+		jumpTarget = ((Simulator::PC + 4) >> 28) << 28;
+		jumpTarget += (inst.imme << 2);
+		Simulator::Branch_taken = true;
+		Simulator::Branch_PC = jumpTarget;
 		break;
 	case 3: // jal
-		Global::ID_EX.WriteDes = 31;
-		Global::ID_EX.ALU_result = Global::PC;
+		Simulator::ID_EX.WriteDes = 31;
+		Simulator::ID_EX.ALU_result = Simulator::PC;
 		inst.imme = (unsigned)(inst.line << 6) >> 6;
-		jumpTaregt = ((Global::PC + 4) >> 28) << 28;
-		jumpTaregt += (inst.imme << 2);
-		Global::ID_EX.RegWrite = true;
-		Global::Branch_taken = true;
-		Global::Branch_PC = jumpTaregt;
+		jumpTarget = ((Simulator::PC + 4) >> 28) << 28;
+		jumpTarget += (inst.imme << 2);
+		Simulator::ID_EX.RegWrite = true;
+		Simulator::Branch_taken = true;
+		Simulator::Branch_PC = jumpTarget;
 		break;
 	}
-	if (!Global::Stall) Global::ID_EX.inst = inst;
-	Global::ID_EX.RegRs = DataRs;
-	Global::ID_EX.RegRt = DataRt;
+	if (!Simulator::Stall) Simulator::ID_EX.inst = inst;
+	//if (Simulator::Branch_taken) Simulator::Flush = true;
+	Simulator::ID_EX.RegRs = DataRs;
+	Simulator::ID_EX.RegRt = DataRt;
 }
 
 void EXE() {
-	Instruction inst = Global::ID_EX.inst;
+	Instruction inst = Simulator::ID_EX.inst;
 	int ALU_result = 0, DataRs = 0, DataRt = 0;
 	// Forwarding
-	if (!isBranch(inst)) {
+	if (!Simulator::isBranch(inst)) {
 		if (inst.fwdrs)
 		{
-			DataRs = Global::MEM_WB.Data;
+			DataRs = Simulator::MEM_WB.Data;
 			if (inst.fwdrs_EX_DM_from)
-				DataRs = Global::WB_AFTER.ALU_result;
+				DataRs = Simulator::WB_AFTER.ALU_result;
 		}
 		else
-			DataRs = Global::ID_EX.RegRs;
+			DataRs = Simulator::ID_EX.RegRs;
 		if (inst.fwdrt)
 		{
-			DataRt = Global::MEM_WB.Data;
+			DataRt = Simulator::MEM_WB.Data;
 			if (inst.fwdrt_EX_DM_from)
-				DataRt = Global::WB_AFTER.ALU_result;
+				DataRt = Simulator::WB_AFTER.ALU_result;
 		}
 		else
-			DataRt = Global::ID_EX.RegRt;
+			DataRt = Simulator::ID_EX.RegRt;
 	}
 
 	inst.fwdrs = false;
@@ -474,27 +672,27 @@ void EXE() {
 			ALU_result = DataRt >> inst.shamt;
 			break;
 		case 24:// mult
-			ALU_result = Global::ID_EX.ALU_result;
+			ALU_result = Simulator::ID_EX.ALU_result;
 			HILOWriteDetect("mult");
 			x = (long long)DataRs*(long long)DataRt;
-			Global::HI = x >> 32;
-			Global::LO = x << 32 >> 32;
+			Simulator::HI = x >> 32;
+			Simulator::LO = x << 32 >> 32;
 			break;
 		case 25:// multu
-			ALU_result = Global::ID_EX.ALU_result;
+			ALU_result = Simulator::ID_EX.ALU_result;
 			HILOWriteDetect("multu");
 			rs_64 = (unsigned)DataRs;
 			rt_64 = (unsigned)DataRt;
 			x = rs_64*rt_64;
-			Global::HI = x >> 32;
-			Global::LO = x << 32 >> 32;
+			Simulator::HI = x >> 32;
+			Simulator::LO = x << 32 >> 32;
 			break;
 		case 16:// mfhi
-			ALU_result = Global::HI;
+			ALU_result = Simulator::HI;
 			HILOWriteDetect("mfhi");
 			break;
 		case 18:// mflo
-			ALU_result = Global::LO;
+			ALU_result = Simulator::LO;
 			HILOWriteDetect("mflo");
 			break;
 		}
@@ -557,110 +755,134 @@ void EXE() {
 		ALU_result = (DataRs < inst.imme);
 		break;
 	case 3: //jal
-		ALU_result = Global::ID_EX.ALU_result;
+		ALU_result = Simulator::ID_EX.ALU_result;
 		break;
 	case 63: // Halt
-		Global::Halt = true;
+		Simulator::Halt = true;
 		break;
 	}
 	//Passing results
-	Global::EX_MEM.WriteDes = Global::ID_EX.WriteDes;
-	Global::EX_MEM.ALU_result = ALU_result;
-	Global::EX_MEM.RegWrite = Global::ID_EX.RegWrite;
-	Global::EX_MEM.inst = inst;
-	Global::EX_MEM.MemRead = Global::ID_EX.MemRead;
-	Global::EX_MEM.RegRt = DataRt;
+	Simulator::EX_MEM.WriteDes = Simulator::ID_EX.WriteDes;
+	Simulator::EX_MEM.ALU_result = ALU_result;
+	Simulator::EX_MEM.RegWrite = Simulator::ID_EX.RegWrite;
+	Simulator::EX_MEM.inst = inst;
+	Simulator::EX_MEM.MemRead = Simulator::ID_EX.MemRead;
+	Simulator::EX_MEM.RegRt = DataRt;
 }
 
 void DM() {
-	Instruction inst = Global::EX_MEM.inst;
+	Instruction inst = Simulator::EX_MEM.inst;
 	int Data = 0;
 
 	switch (inst.opcode) {
 	case 35: // lw
-		DataMisalignedDetect(Global::EX_MEM.ALU_result, 4);
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 3);
-		if (Global::error_toggle[1] || Global::error_toggle[2]) return;
+		DataMisalignedDetect(Simulator::EX_MEM.ALU_result, 4);
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 3);
+		if (Simulator::error_toggle[1] || Simulator::error_toggle[2]) return;
 		for (int i = 0; i < 4; i++)
-			Data = (Data << 8) | (unsigned char)Global::Memory[Global::EX_MEM.ALU_result + i];
+			Data = (Data << 8) | (unsigned char)Simulator::Memory[Simulator::EX_MEM.ALU_result + i];
 		break;
 	case 33: // lh
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 1);
-		DataMisalignedDetect(Global::EX_MEM.ALU_result, 2);
-		if (Global::error_toggle[1] || Global::error_toggle[2]) return;
-		Data = Global::Memory[Global::EX_MEM.ALU_result];
-		Data = (Data << 8) | (unsigned char)Global::Memory[Global::EX_MEM.ALU_result + 1];
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 1);
+		DataMisalignedDetect(Simulator::EX_MEM.ALU_result, 2);
+		if (Simulator::error_toggle[1] || Simulator::error_toggle[2]) return;
+		Data = Simulator::Memory[Simulator::EX_MEM.ALU_result];
+		Data = (Data << 8) | (unsigned char)Simulator::Memory[Simulator::EX_MEM.ALU_result + 1];
 		break;
 	case 37: // lhu
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 1);
-		DataMisalignedDetect(Global::EX_MEM.ALU_result, 2);
-		if (Global::error_toggle[1] || Global::error_toggle[2]) return;
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 1);
+		DataMisalignedDetect(Simulator::EX_MEM.ALU_result, 2);
+		if (Simulator::error_toggle[1] || Simulator::error_toggle[2]) return;
 		for (int i = 0; i < 2; i++)
-			Data = (Data << 8) | (unsigned char)Global::Memory[Global::EX_MEM.ALU_result + i];
+			Data = (Data << 8) | (unsigned char)Simulator::Memory[Simulator::EX_MEM.ALU_result + i];
 		break;
 	case 32: // lb
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 0);
-		if (Global::error_toggle[1]) return;
-		Data = Global::Memory[Global::EX_MEM.ALU_result];
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 0);
+		if (Simulator::error_toggle[1]) return;
+		Data = Simulator::Memory[Simulator::EX_MEM.ALU_result];
 		break;
 	case 36: // lbu
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 0);
-		if (Global::error_toggle[1]) return;
-		Data = (unsigned char)Global::Memory[Global::EX_MEM.ALU_result];
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 0);
+		if (Simulator::error_toggle[1]) return;
+		Data = (unsigned char)Simulator::Memory[Simulator::EX_MEM.ALU_result];
 		break;
 	case 43: // sw
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 3);
-		DataMisalignedDetect(Global::EX_MEM.ALU_result, 4);
-		if (Global::error_toggle[1] || Global::error_toggle[2]) return;
-		Global::Memory[Global::EX_MEM.ALU_result] = (char)(Global::EX_MEM.RegRt >> 24);
-		Global::Memory[Global::EX_MEM.ALU_result + 1] = (char)((Global::EX_MEM.RegRt >> 16) & 0xff);
-		Global::Memory[Global::EX_MEM.ALU_result + 2] = (char)((Global::EX_MEM.RegRt >> 8) & 0xff);
-		Global::Memory[Global::EX_MEM.ALU_result + 3] = (char)((Global::EX_MEM.RegRt) & 0xff);
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 3);
+		DataMisalignedDetect(Simulator::EX_MEM.ALU_result, 4);
+		if (Simulator::error_toggle[1] || Simulator::error_toggle[2]) return;
+		Simulator::Memory[Simulator::EX_MEM.ALU_result] = (char)(Simulator::EX_MEM.RegRt >> 24);
+		Simulator::Memory[Simulator::EX_MEM.ALU_result + 1] = (char)((Simulator::EX_MEM.RegRt >> 16) & 0xff);
+		Simulator::Memory[Simulator::EX_MEM.ALU_result + 2] = (char)((Simulator::EX_MEM.RegRt >> 8) & 0xff);
+		Simulator::Memory[Simulator::EX_MEM.ALU_result + 3] = (char)((Simulator::EX_MEM.RegRt) & 0xff);
 		break;
 	case 41: // sh
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 1);
-		DataMisalignedDetect(Global::EX_MEM.ALU_result, 2);
-		if (Global::error_toggle[1] || Global::error_toggle[2]) return;
-		Global::Memory[Global::EX_MEM.ALU_result] = (char)((Global::EX_MEM.RegRt >> 8) & 0xff);
-		Global::Memory[Global::EX_MEM.ALU_result + 1] = (char)((Global::EX_MEM.RegRt));
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 1);
+		DataMisalignedDetect(Simulator::EX_MEM.ALU_result, 2);
+		if (Simulator::error_toggle[1] || Simulator::error_toggle[2]) return;
+		Simulator::Memory[Simulator::EX_MEM.ALU_result] = (char)((Simulator::EX_MEM.RegRt >> 8) & 0xff);
+		Simulator::Memory[Simulator::EX_MEM.ALU_result + 1] = (char)((Simulator::EX_MEM.RegRt));
 		break;
 	case 40: // sb
-		MemOverflowDetect(Global::EX_MEM.ALU_result, 0);
-		if (Global::error_toggle[1]) return;
-		Global::Memory[Global::EX_MEM.ALU_result] = (char)Global::EX_MEM.RegRt;
+		MemOverflowDetect(Simulator::EX_MEM.ALU_result, 0);
+		if (Simulator::error_toggle[1]) return;
+		Simulator::Memory[Simulator::EX_MEM.ALU_result] = (char)Simulator::EX_MEM.RegRt;
 		break;
 	default: // else
-		Data = Global::EX_MEM.ALU_result;
+		Data = Simulator::EX_MEM.ALU_result;
 		break;
 	}
-	Global::MEM_WB.Data = Data;
-	Global::MEM_WB.MemRead = Global::EX_MEM.MemRead;
-	Global::MEM_WB.inst = inst;
-	Global::MEM_WB.RegWrite = Global::EX_MEM.RegWrite;
-	Global::MEM_WB.RegRt = Global::EX_MEM.RegRt;
-	Global::MEM_WB.ALU_result = Global::EX_MEM.ALU_result;
-	Global::MEM_WB.WriteDes = Global::EX_MEM.WriteDes;
+	Simulator::MEM_WB.Data = Data;
+	Simulator::MEM_WB.MemRead = Simulator::EX_MEM.MemRead;
+	Simulator::MEM_WB.inst = inst;
+	Simulator::MEM_WB.RegWrite = Simulator::EX_MEM.RegWrite;
+	Simulator::MEM_WB.RegRt = Simulator::EX_MEM.RegRt;
+	Simulator::MEM_WB.ALU_result = Simulator::EX_MEM.ALU_result;
+	Simulator::MEM_WB.WriteDes = Simulator::EX_MEM.WriteDes;
 
 
-	//Global::debug();
+	//Simulator::debug();
 }
 
 void WB() {
-	Instruction inst = Global::MEM_WB.inst;
-	if (Global::MEM_WB.RegWrite) {
-		if ((Global::MEM_WB.WriteDes == 0) && !isBranch(inst) && !notS(inst.name)) {
-			Global::error_toggle[0] = true;		//Write 0
+	Instruction inst = Simulator::MEM_WB.inst;
+	if (Simulator::MEM_WB.RegWrite) {
+		if ((Simulator::MEM_WB.WriteDes == 0) && !Simulator::isBranch(inst) && !Simulator::notS(inst.name)) {
+			Simulator::error_toggle[0] = true;		//Write 0
 			return;
 		}
 		if (inst.type == 'R' || inst.type == 'J')
 		{
-			Global::reg[Global::MEM_WB.WriteDes] = Global::MEM_WB.ALU_result;
-			Global::WB_AFTER.ALU_result = Global::MEM_WB.ALU_result;
+			Simulator::reg[Simulator::MEM_WB.WriteDes] = Simulator::MEM_WB.ALU_result;
+			Simulator::WB_AFTER.ALU_result = Simulator::MEM_WB.ALU_result;
 		}
 		else if (inst.type == 'I')
 		{
-			Global::reg[Global::MEM_WB.WriteDes] = Global::MEM_WB.Data;
-			Global::WB_AFTER.ALU_result = Global::MEM_WB.Data;
+			Simulator::reg[Simulator::MEM_WB.WriteDes] = Simulator::MEM_WB.Data;
+			Simulator::WB_AFTER.ALU_result = Simulator::MEM_WB.Data;
 		}
 	}
+}
+void nextStage() {
+	
+	Instruction inst;
+	Simulator::Stall = false;
+	Simulator::IF_ID.inst.fwdrs = false;
+	Simulator::IF_ID.inst.fwdrt = false;
+	Simulator::ID_EX.inst.fwdrs = false;
+	Simulator::ID_EX.inst.fwdrt = false;
+	Simulator::ID_EX.inst.fwdrs_EX_DM_from = false;
+	Simulator::ID_EX.inst.fwdrt_EX_DM_from = false;
+	
+	//Forward in ID (only when branch) 
+	inst = Simulator::IF_ID.inst;
+	checkfwdinID(inst);
+	//Forwarding in EX (R_type forwarding from EX/MEM or MEM/WB)
+	inst = Simulator::ID_EX.inst;
+	checkfwdinEX(inst);
+	
+	// Stall Test
+	inst = Simulator::IF_ID.inst;
+	if (inst.name == "NOP" || inst.name == "HALT") return;
+	checkstall(inst);
+	
 }
