@@ -121,7 +121,7 @@ inline void checkfwdinID(Instruction &inst)
 
 inline void checkfwdinEX(Instruction &inst)
 {
-	if (!Simulator::isBranch(inst)) {
+	if (!Simulator::isBranch(inst)&& !Simulator::isHILO(inst)&&inst.name!="HALT") {
 		/*
 		Check for fwdrs
 		*/
@@ -210,45 +210,58 @@ inline void checkfwdinEX(Instruction &inst)
 }
 inline void checkstall(Instruction &inst)
 {
-	if (!Simulator::isBranch(inst)) {
-		if (Simulator::ID_EX.MemRead && Simulator::ID_EX.WriteDes != 0 && ((Simulator::ID_EX.WriteDes == inst.rs) || (Simulator::ID_EX.WriteDes == inst.rt))) {
-			if (Simulator::ID_EX.WriteDes == inst.rs) {
+	if(!Simulator::isHILO(inst))
+	{
+		if (!Simulator::isBranch(inst))
+		{
+			if (Simulator::ID_EX.MemRead && Simulator::ID_EX.WriteDes != 0 && ((Simulator::ID_EX.WriteDes == inst.rs) || (Simulator::ID_EX.WriteDes == inst.rt)))
+			{
+				if (Simulator::ID_EX.WriteDes == inst.rs && inst.name!="LUI" && !Simulator::isShift(inst))
 				{
-					Simulator::Stall = true;
-				}
-			}
-			else if (Simulator::ID_EX.WriteDes == inst.rt) {
-				if (inst.type == 'I') {
-					if (inst.name == "SW" || inst.name == "SH" || inst.name == "SB")
 					{
 						Simulator::Stall = true;
 					}
 				}
-				else if (inst.type != 'I')
+				else if (Simulator::ID_EX.WriteDes == inst.rt) 
 				{
-					Simulator::Stall = true;
+					if (inst.type == 'I')
+					{
+						if (inst.name == "SW" || inst.name == "SH" || inst.name == "SB")
+						{
+							Simulator::Stall = true;
+						}
+
+					}
+					else if (inst.type != 'I')
+					{
+						Simulator::Stall = true;
+					}
 				}
 			}
 		}
-	}
-	else {
-		if (Simulator::ID_EX.RegWrite && (Simulator::ID_EX.WriteDes != 0) && ((Simulator::ID_EX.WriteDes == inst.rs) || (Simulator::ID_EX.WriteDes == inst.rt))) {
-			if (Simulator::ID_EX.WriteDes == inst.rs) {
-				if (inst.name != "J" && inst.name != "JAL")
-				{
-					Simulator::Stall = true;
-				}
-			}
-			if (Simulator::ID_EX.WriteDes == inst.rt) {
-				if (!Simulator::isJ(inst.name))
-				{
-					Simulator::Stall = true;
-				}
-			}
-		}
-		else if (Simulator::EX_MEM.MemRead && (Simulator::EX_MEM.WriteDes != 0) && ((Simulator::EX_MEM.WriteDes == inst.rs) || (Simulator::EX_MEM.WriteDes == inst.rt)))
+		else 
 		{
-			Simulator::Stall = true;
+			if (Simulator::ID_EX.RegWrite && (Simulator::ID_EX.WriteDes != 0) && ((Simulator::ID_EX.WriteDes == inst.rs) || (Simulator::ID_EX.WriteDes == inst.rt))) 
+			{
+				if (Simulator::ID_EX.WriteDes == inst.rs)
+				{
+					if (inst.name != "J" && inst.name != "JAL")
+					{
+						Simulator::Stall = true;
+					}
+				}
+				if (Simulator::ID_EX.WriteDes == inst.rt)
+				{
+					if (!Simulator::isJ(inst.name))
+					{
+						Simulator::Stall = true;
+					}
+				}
+			}
+			else if (Simulator::EX_MEM.MemRead && (Simulator::EX_MEM.WriteDes != 0) && ((Simulator::EX_MEM.WriteDes == inst.rs) || (Simulator::EX_MEM.WriteDes == inst.rt)))
+			{
+				Simulator::Stall = true;
+			}
 		}
 	}
 }

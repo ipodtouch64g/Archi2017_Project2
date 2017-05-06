@@ -16,37 +16,36 @@ string stagenames[5] = { "IF: ", "ID: ", "EX: ", "DM: ", "WB: " };
 
 
 void printCycle(ofstream &snapshot, int &Cycle) {
-	File::snapshot << "cycle " << dec << Cycle++ << endl;
+	File::snapshot << "cycle " << dec << Cycle++ << '\n';
 
 	for (int i = 0; i < 32; i++) {
 		if (Simulator::reg[i] != lastThings::reg[i] || Cycle == 1)
 		{
 			File::snapshot << "$" << setw(2) << setfill('0') << dec << i;
-			File::snapshot << ": 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::reg[i] << endl;
+			File::snapshot << ": 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::reg[i] << '\n';
 		}
 		lastThings::reg[i] = Simulator::reg[i];
 	}
 	if (Simulator::HI != lastThings::HI || Cycle == 1)
 	{
 		File::snapshot << "$" << setw(2) << "HI";
-		File::snapshot << ": 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::HI << endl;
+		File::snapshot << ": 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::HI << '\n';
 	}
 	lastThings::HI = Simulator::HI;
 	if (Simulator::LO != lastThings::LO || Cycle == 1)
 	{
 		File::snapshot << "$" << setw(2) << "LO";
-		File::snapshot << ": 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::LO << endl;
+		File::snapshot << ": 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::LO << '\n';
 	}
 	lastThings::LO = Simulator::LO;
-	File::snapshot << "PC: 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::PC << endl;
+	File::snapshot << "PC: 0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::PC << '\n';
 	File::snapshot << stagenames[0] << "0x" << setw(8) << setfill('0') << hex << uppercase << Simulator::Address[Simulator::PC];
 	if (Simulator::Stall)
 		File::snapshot << " to_be_stalled";
 	else if (Simulator::Flush)
 		File::snapshot << " to_be_flushed";
-	File::snapshot << endl;
-	if ((unsigned int)Simulator::Address[Simulator::PC] != 0xFFFFFFFF)
-		Simulator::Halt = false;
+	File::snapshot << '\n';
+	
 
 	Buffer Buf;
 	for (int i = 0; i < 4; i++) {
@@ -64,10 +63,10 @@ void printCycle(ofstream &snapshot, int &Cycle) {
 		File::snapshot << stagenames[i + 1];
 
 		if (R_type && (Buf.inst.rt == 0) && (Buf.inst.rd == 0) && (Buf.inst.shamt == 0))
-			File::snapshot << "NOP" << endl;
+			File::snapshot << "NOP" << '\n';
 
 		else if (Simulator::Stall && i == 0)
-			File::snapshot << Buf.inst.name << " to_be_stalled" << endl;
+			File::snapshot << Buf.inst.name << " to_be_stalled" << '\n';
 
 		else if (Buf.inst.fwdrs) {
 			if (Buf.inst.fwdrs_EX_DM_from)
@@ -81,19 +80,19 @@ void printCycle(ofstream &snapshot, int &Cycle) {
 				else
 					File::snapshot << " fwd_EX-DM_rt_$" << dec << Buf.inst.rt;
 			}
-			File::snapshot << endl;
+			File::snapshot << '\n';
 		}
 		else if (Buf.inst.fwdrt) {
 			if (Buf.inst.fwdrt_EX_DM_from)
 				File::snapshot << Buf.inst.name << " fwd_DM-WB_rt_$" << dec << Buf.inst.rt;
 			else
 				File::snapshot << Buf.inst.name << " fwd_EX-DM_rt_$" << dec << Buf.inst.rt;
-			File::snapshot << endl;
+			File::snapshot << '\n';
 		}
 		else
-			File::snapshot << Buf.inst.name << endl;
+			File::snapshot << Buf.inst.name << '\n';
 	}
-	File::snapshot << endl << endl;
+	File::snapshot << '\n' << '\n';
 }
 void Initialize() {
 	for (int i = 0; i < 32; i++)
@@ -184,7 +183,7 @@ int main() {
 		// Print errors
 		for (int i = 0; i < 5; i++) {
 			if (Simulator::error_toggle[i])
-				File::error_dump << "In cycle " << Cycle << errorMsg[i] << endl;
+				File::error_dump << "In cycle " << Cycle << errorMsg[i] << '\n';
 		}
 
 		// Halt if misaligned or addovf

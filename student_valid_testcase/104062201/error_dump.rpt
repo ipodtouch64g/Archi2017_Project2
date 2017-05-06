@@ -1,0 +1,14 @@
+In cycle 5: Write $0 Error
+In cycle 36: Number Overflow
+In cycle 49: Write $0 Error
+In cycle 49: Overwrite HI-LO registers
+In cycle 92: Write $0 Error
+In cycle 92: Overwrite HI-LO registers
+In cycle 121: Number Overflow
+In cycle 135: Write $0 Error
+In cycle 135: Overwrite HI-LO registers
+In cycle 170: Write $0 Error
+In cycle 172: Write $0 Error
+In cycle 173: Write $0 Error
+In cycle 173: Address Overflow
+In cycle 173: Misalignment Error

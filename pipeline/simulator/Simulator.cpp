@@ -13,9 +13,9 @@ ofstream File::error_dump;
 ifstream File::image;
 void Simulator::debug()
 {
-	std::cout << "IF_ID.ALU.result : " << IF_ID.ALU_result << endl;
-	std::cout << "ID_EX.ALU.result : " << ID_EX.ALU_result << endl;
-	std::cout << "EX_MEM.ALU.result : " << EX_MEM.ALU_result << endl;
+	std::cout << "IF_ID.ALU.result : " << IF_ID.ALU_result << '\n';
+	std::cout << "ID_EX.ALU.result : " << ID_EX.ALU_result << '\n';
+	std::cout << "EX_MEM.ALU.result : " << EX_MEM.ALU_result << '\n';
 }
 bool Simulator::isJ(string s) {
 	return (s == "JR" || s == "BGTZ" || s == "J" || s == "JAL");
@@ -33,5 +33,8 @@ bool Simulator::notS(string s) {
 	return (s == "NOP") || (s == "SW") || (s == "SB") || (s == "SH");
 }
 bool Simulator::isHILO(Instruction inst) {
-	return ((inst.name == "MULT") || (inst.name == "MULTU") || (inst.name == "MFHI") || (inst.name == "MFLO"));
+	return ( (inst.name == "MFHI") || (inst.name == "MFLO"));
+}
+bool Simulator::isShift(Instruction inst) {
+	return ((inst.name == "SRA") || (inst.name == "SRL")||(inst.name=="SLL"));
 }

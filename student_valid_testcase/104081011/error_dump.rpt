@@ -1,0 +1,28 @@
+In cycle 5: Number Overflow
+In cycle 6: Number Overflow
+In cycle 14: Number Overflow
+In cycle 15: Number Overflow
+In cycle 16: Write $0 Error
+In cycle 19: Number Overflow
+In cycle 21: Write $0 Error
+In cycle 26: Number Overflow
+In cycle 28: Write $0 Error
+In cycle 28: Number Overflow
+In cycle 30: Write $0 Error
+In cycle 35: Write $0 Error
+In cycle 42: Write $0 Error
+In cycle 49: Write $0 Error
+In cycle 51: Write $0 Error
+In cycle 53: Write $0 Error
+In cycle 59: Write $0 Error
+In cycle 70: Write $0 Error
+In cycle 79: Write $0 Error
+In cycle 99: Overwrite HI-LO registers
+In cycle 102: Overwrite HI-LO registers
+In cycle 122: Write $0 Error
+In cycle 132: Number Overflow
+In cycle 140: Write $0 Error
+In cycle 156: Number Overflow
+In cycle 157: Write $0 Error
+In cycle 157: Address Overflow
+In cycle 157: Misalignment Error

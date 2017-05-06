@@ -70,6 +70,7 @@ public:
 	static bool isBranch(Instruction);
 	static bool notS(string);
 	static bool isHILO(Instruction);
+	static bool isShift(Instruction);
 };
 
 

@@ -1,0 +1,5 @@
+In cycle 5: Write $0 Error
+In cycle 20: Overwrite HI-LO registers
+In cycle 21: Overwrite HI-LO registers
+In cycle 22: Number Overflow
+In cycle 23: Number Overflow

@@ -1,0 +1,5 @@
+In cycle 8: Number Overflow
+In cycle 10: Overwrite HI-LO registers
+In cycle 13: Write $0 Error
+In cycle 14: Write $0 Error
+In cycle 36: Misalignment Error
