@@ -608,7 +608,6 @@ void ID() {
 		break;
 	}
 	if (!Simulator::Stall) Simulator::ID_EX.inst = inst;
-	//if (Simulator::Branch_taken) Simulator::Flush = true;
 	Simulator::ID_EX.RegRs = DataRs;
 	Simulator::ID_EX.RegRt = DataRt;
 }
